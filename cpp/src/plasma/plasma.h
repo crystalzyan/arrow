@@ -33,7 +33,6 @@
 #include "arrow/status.h"
 #include "arrow/util/logging.h"
 #include "format/common_generated.h"
-#include "plasma/common.h"
 
 #define HANDLE_SIGPIPE(s, fd_)                                              \
   do {                                                                      \
