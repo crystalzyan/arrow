@@ -433,6 +433,7 @@ static struct PyModuleDef moduledef = {
 #define MOD_INIT(name) PyMODINIT_FUNC init##name(void)
 #endif
 
+#pragma GCC visibility push(default)
 MOD_INIT(libplasma_extension) {
 #if PY_MAJOR_VERSION >= 3
   PyObject* m = PyModule_Create(&moduledef);
@@ -456,3 +457,4 @@ MOD_INIT(libplasma_extension) {
   return m;
 #endif
 }
+#pragma GCC visibility pop
