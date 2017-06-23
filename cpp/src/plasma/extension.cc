@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include "plasma/common.h"
+
 #include "plasma/extension.h"
 
 #include <algorithm>
