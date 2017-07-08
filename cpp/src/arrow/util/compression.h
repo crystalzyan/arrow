@@ -27,7 +27,7 @@
 namespace arrow {
 
 struct Compression {
-  enum type { UNCOMPRESSED, SNAPPY, GZIP, LZO, BROTLI };
+  enum type { UNCOMPRESSED, SNAPPY, GZIP, LZO, BROTLI, ZSTD, LZ4 };
 };
 
 class ARROW_EXPORT Codec {
@@ -102,6 +102,34 @@ class ARROW_EXPORT GZipCodec : public Codec {
   // The gzip compressor is stateful
   class GZipCodecImpl;
   std::unique_ptr<GZipCodecImpl> impl_;
+};
+
+// ZSTD codec.
+class ARROW_EXPORT ZSTDCodec : public Codec {
+ public:
+  Status Decompress(int64_t input_len, const uint8_t* input, int64_t output_len,
+      uint8_t* output_buffer) override;
+
+  Status Compress(int64_t input_len, const uint8_t* input, int64_t output_buffer_len,
+      uint8_t* output_buffer, int64_t* output_length) override;
+
+  int64_t MaxCompressedLen(int64_t input_len, const uint8_t* input) override;
+
+  const char* name() const override { return "zstd"; }
+};
+
+// Lz4 codec.
+class ARROW_EXPORT Lz4Codec : public Codec {
+ public:
+  Status Decompress(int64_t input_len, const uint8_t* input, int64_t output_len,
+      uint8_t* output_buffer) override;
+
+  Status Compress(int64_t input_len, const uint8_t* input, int64_t output_buffer_len,
+      uint8_t* output_buffer, int64_t* output_length) override;
+
+  int64_t MaxCompressedLen(int64_t input_len, const uint8_t* input) override;
+
+  const char* name() const override { return "lz4"; }
 };
 
 }  // namespace arrow

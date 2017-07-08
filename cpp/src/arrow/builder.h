@@ -510,7 +510,7 @@ class ARROW_EXPORT ListBuilder : public ArrayBuilder {
  public:
   /// Use this constructor to incrementally build the value array along with offsets and
   /// null bitmap.
-  ListBuilder(MemoryPool* pool, std::shared_ptr<ArrayBuilder> value_builder,
+  ListBuilder(MemoryPool* pool, std::unique_ptr<ArrayBuilder> value_builder,
       const std::shared_ptr<DataType>& type = nullptr);
 
   /// Use this constructor to build the list with a pre-existing values array
@@ -536,11 +536,11 @@ class ARROW_EXPORT ListBuilder : public ArrayBuilder {
 
   Status AppendNull() { return Append(false); }
 
-  std::shared_ptr<ArrayBuilder> value_builder() const;
+  ArrayBuilder* value_builder() const;
 
  protected:
   BufferBuilder offset_builder_;
-  std::shared_ptr<ArrayBuilder> value_builder_;
+  std::unique_ptr<ArrayBuilder> value_builder_;
   std::shared_ptr<Array> values_;
 
   void Reset();
@@ -568,6 +568,11 @@ class ARROW_EXPORT BinaryBuilder : public ListBuilder {
   }
 
   Status Finish(std::shared_ptr<Array>* out) override;
+
+  /// Temporary access to a value.
+  ///
+  /// This pointer becomes invalid on the next modifying operation.
+  const uint8_t* GetValue(int64_t i, int32_t* out_length) const;
 
  protected:
   UInt8Builder* byte_builder_;
@@ -637,10 +642,7 @@ class ARROW_EXPORT DecimalBuilder : public FixedSizeBinaryBuilder {
 class ARROW_EXPORT StructBuilder : public ArrayBuilder {
  public:
   StructBuilder(MemoryPool* pool, const std::shared_ptr<DataType>& type,
-      const std::vector<std::shared_ptr<ArrayBuilder>>& field_builders)
-      : ArrayBuilder(pool, type) {
-    field_builders_ = field_builders;
-  }
+      std::vector<std::unique_ptr<ArrayBuilder>>&& field_builders);
 
   Status Finish(std::shared_ptr<Array>* out) override;
 
@@ -664,21 +666,151 @@ class ARROW_EXPORT StructBuilder : public ArrayBuilder {
 
   Status AppendNull() { return Append(false); }
 
-  std::shared_ptr<ArrayBuilder> field_builder(int pos) const;
+  ArrayBuilder* field_builder(int i) const { return field_builders_[i].get(); }
 
-  const std::vector<std::shared_ptr<ArrayBuilder>>& field_builders() const {
-    return field_builders_;
-  }
+  int num_fields() const { return static_cast<int>(field_builders_.size()); }
 
  protected:
-  std::vector<std::shared_ptr<ArrayBuilder>> field_builders_;
+  std::vector<std::unique_ptr<ArrayBuilder>> field_builders_;
+};
+
+// ----------------------------------------------------------------------
+// Dictionary builder
+
+// Based on Apache Parquet-cpp's DictEncoder
+
+// Initially 1024 elements
+static constexpr int kInitialHashTableSize = 1 << 10;
+
+typedef int32_t hash_slot_t;
+static constexpr hash_slot_t kHashSlotEmpty = std::numeric_limits<int32_t>::max();
+
+// The maximum load factor for the hash table before resizing.
+static constexpr double kMaxHashTableLoad = 0.7;
+
+namespace internal {
+
+// TODO(ARROW-1176): Use Tensorflow's StringPiece instead of this here.
+struct WrappedBinary {
+  WrappedBinary(const uint8_t* ptr, int32_t length) : ptr_(ptr), length_(length) {}
+
+  const uint8_t* ptr_;
+  int32_t length_;
+};
+
+template <typename T>
+struct DictionaryScalar {
+  using type = typename T::c_type;
+};
+
+template <>
+struct DictionaryScalar<BinaryType> {
+  using type = WrappedBinary;
+};
+
+template <>
+struct DictionaryScalar<StringType> {
+  using type = WrappedBinary;
+};
+
+}  // namespace internal
+
+/// \brief Array builder for created encoded DictionaryArray from dense array
+/// data
+template <typename T>
+class ARROW_EXPORT DictionaryBuilder : public ArrayBuilder {
+ public:
+  using Scalar = typename internal::DictionaryScalar<T>::type;
+  explicit DictionaryBuilder(MemoryPool* pool, const std::shared_ptr<DataType>& type);
+
+  template <typename T1 = T>
+  explicit DictionaryBuilder(
+      typename std::enable_if<TypeTraits<T1>::is_parameter_free, MemoryPool*>::type pool)
+      : DictionaryBuilder<T1>(pool, TypeTraits<T1>::type_singleton()) {}
+
+  /// \brief Append a scalar value
+  Status Append(const Scalar& value);
+
+  /// \brief Append a scalar null value
+  Status AppendNull();
+
+  /// \brief Append a whole dense array to the builder
+  Status AppendArray(const Array& array);
+
+  Status Init(int64_t elements) override;
+  Status Resize(int64_t capacity) override;
+  Status Finish(std::shared_ptr<Array>* out) override;
+
+ protected:
+  Status DoubleTableSize();
+  Scalar GetDictionaryValue(int64_t index);
+  int HashValue(const Scalar& value);
+  bool SlotDifferent(hash_slot_t slot, const Scalar& value);
+  Status AppendDictionary(const Scalar& value);
+
+  std::shared_ptr<PoolBuffer> hash_table_;
+  int32_t* hash_slots_;
+
+  /// Size of the table. Must be a power of 2.
+  int hash_table_size_;
+
+  // Store hash_table_size_ - 1, so that j & mod_bitmask_ is equivalent to j %
+  // hash_table_size_, but uses far fewer CPU cycles
+  int mod_bitmask_;
+
+  typename TypeTraits<T>::BuilderType dict_builder_;
+  AdaptiveUIntBuilder values_builder_;
+};
+
+class ARROW_EXPORT BinaryDictionaryBuilder : public DictionaryBuilder<BinaryType> {
+ public:
+  using DictionaryBuilder::DictionaryBuilder;
+  using DictionaryBuilder::Append;
+
+  Status Append(const uint8_t* value, int32_t length) {
+    return Append(internal::WrappedBinary(value, length));
+  }
+
+  Status Append(const char* value, int32_t length) {
+    return Append(
+        internal::WrappedBinary(reinterpret_cast<const uint8_t*>(value), length));
+  }
+
+  Status Append(const std::string& value) {
+    return Append(internal::WrappedBinary(reinterpret_cast<const uint8_t*>(value.c_str()),
+        static_cast<int32_t>(value.size())));
+  }
+};
+
+/// \brief Dictionary array builder with convenience methods for strings
+class ARROW_EXPORT StringDictionaryBuilder : public DictionaryBuilder<StringType> {
+ public:
+  using DictionaryBuilder::DictionaryBuilder;
+  using DictionaryBuilder::Append;
+
+  Status Append(const uint8_t* value, int32_t length) {
+    return Append(internal::WrappedBinary(value, length));
+  }
+
+  Status Append(const char* value, int32_t length) {
+    return Append(
+        internal::WrappedBinary(reinterpret_cast<const uint8_t*>(value), length));
+  }
+
+  Status Append(const std::string& value) {
+    return Append(internal::WrappedBinary(reinterpret_cast<const uint8_t*>(value.c_str()),
+        static_cast<int32_t>(value.size())));
+  }
 };
 
 // ----------------------------------------------------------------------
 // Helper functions
 
 Status ARROW_EXPORT MakeBuilder(MemoryPool* pool, const std::shared_ptr<DataType>& type,
-    std::shared_ptr<ArrayBuilder>* out);
+    std::unique_ptr<ArrayBuilder>* out);
+
+Status ARROW_EXPORT MakeDictionaryBuilder(MemoryPool* pool,
+    const std::shared_ptr<DataType>& type, std::shared_ptr<ArrayBuilder>* out);
 
 }  // namespace arrow
 

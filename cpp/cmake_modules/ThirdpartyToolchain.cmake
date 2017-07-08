@@ -27,6 +27,8 @@ set(FLATBUFFERS_VERSION "1.7.1")
 set(JEMALLOC_VERSION "4.4.0")
 set(SNAPPY_VERSION "1.1.3")
 set(BROTLI_VERSION "v0.6.0")
+set(LZ4_VERSION "1.7.5")
+set(ZSTD_VERSION "1.2.0")
 
 string(TOUPPER ${CMAKE_BUILD_TYPE} UPPERCASE_BUILD_TYPE)
 
@@ -47,6 +49,8 @@ if (NOT "$ENV{ARROW_BUILD_TOOLCHAIN}" STREQUAL "")
   set(SNAPPY_HOME "$ENV{ARROW_BUILD_TOOLCHAIN}")
   set(ZLIB_HOME "$ENV{ARROW_BUILD_TOOLCHAIN}")
   set(BROTLI_HOME "$ENV{ARROW_BUILD_TOOLCHAIN}")
+  set(LZ4_HOME "$ENV{ARROW_BUILD_TOOLCHAIN}")
+  set(ZSTD_HOME "$ENV{ARROW_BUILD_TOOLCHAIN}")
 
   if (NOT DEFINED ENV{BOOST_ROOT})
     # Since we have to set this in the environment, we check whether
@@ -81,6 +85,14 @@ endif()
 
 if (DEFINED ENV{BROTLI_HOME})
   set(BROTLI_HOME "$ENV{BROTLI_HOME}")
+endif()
+
+if (DEFINED ENV{LZ4_HOME})
+  set(LZ4_HOME "$ENV{LZ4_HOME}")
+endif()
+
+if (DEFINED ENV{ZSTD_HOME})
+  set(ZSTD_HOME "$ENV{ZSTD_HOME}")
 endif()
 
 # ----------------------------------------------------------------------
@@ -190,17 +202,10 @@ if(ARROW_BUILD_TESTS OR ARROW_BUILD_BENCHMARKS)
                          -Dgtest_force_shared_crt=ON
                          -DCMAKE_CXX_FLAGS=${GTEST_CMAKE_CXX_FLAGS})
 
-    if (CMAKE_VERSION VERSION_GREATER "3.2")
-      # BUILD_BYPRODUCTS is a 3.2+ feature
-      ExternalProject_Add(googletest_ep
-        URL "https://github.com/google/googletest/archive/release-${GTEST_VERSION}.tar.gz"
-        BUILD_BYPRODUCTS ${GTEST_STATIC_LIB} ${GTEST_MAIN_STATIC_LIB}
-        CMAKE_ARGS ${GTEST_CMAKE_ARGS})
-    else()
-      ExternalProject_Add(googletest_ep
-        URL "https://github.com/google/googletest/archive/release-${GTEST_VERSION}.tar.gz"
-        CMAKE_ARGS ${GTEST_CMAKE_ARGS})
-    endif()
+    ExternalProject_Add(googletest_ep
+      URL "https://github.com/google/googletest/archive/release-${GTEST_VERSION}.tar.gz"
+      BUILD_BYPRODUCTS ${GTEST_STATIC_LIB} ${GTEST_MAIN_STATIC_LIB}
+      CMAKE_ARGS ${GTEST_CMAKE_ARGS})
   else()
     find_package(GTest REQUIRED)
     set(GTEST_VENDORED 0)
@@ -242,19 +247,12 @@ if(ARROW_BUILD_TESTS OR ARROW_BUILD_BENCHMARKS)
                           -BUILD_CONFIG_TESTS=OFF
                           -DINSTALL_HEADERS=ON
                           -DCMAKE_CXX_FLAGS=${GFLAGS_CMAKE_CXX_FLAGS})
-    if (CMAKE_VERSION VERSION_GREATER "3.2")
-      # BUILD_BYPRODUCTS is a 3.2+ feature
-      ExternalProject_Add(gflags_ep
-        URL ${GFLAGS_URL}
-        BUILD_IN_SOURCE 1
-        BUILD_BYPRODUCTS "${GFLAGS_STATIC_LIB}"
-        CMAKE_ARGS ${GFLAGS_CMAKE_ARGS})
-    else()
-      ExternalProject_Add(gflags_ep
-        URL ${GFLAGS_URL}
-        BUILD_IN_SOURCE 1
-        CMAKE_ARGS ${GFLAGS_CMAKE_ARGS})
-    endif()
+
+    ExternalProject_Add(gflags_ep
+      URL ${GFLAGS_URL}
+      BUILD_IN_SOURCE 1
+      BUILD_BYPRODUCTS "${GFLAGS_STATIC_LIB}"
+      CMAKE_ARGS ${GFLAGS_CMAKE_ARGS})
   else()
     set(GFLAGS_VENDORED 0)
     find_package(GFlags REQUIRED)
@@ -298,17 +296,11 @@ if(ARROW_BUILD_BENCHMARKS)
     if (APPLE)
       set(GBENCHMARK_CMAKE_ARGS ${GBENCHMARK_CMAKE_ARGS} "-DBENCHMARK_USE_LIBCXX=ON")
     endif()
-    if (CMAKE_VERSION VERSION_GREATER "3.2")
-      # BUILD_BYPRODUCTS is a 3.2+ feature
-      ExternalProject_Add(gbenchmark_ep
-        URL "https://github.com/google/benchmark/archive/v${GBENCHMARK_VERSION}.tar.gz"
-        BUILD_BYPRODUCTS "${GBENCHMARK_STATIC_LIB}"
-        CMAKE_ARGS ${GBENCHMARK_CMAKE_ARGS})
-    else()
-      ExternalProject_Add(gbenchmark_ep
-        URL "https://github.com/google/benchmark/archive/v${GBENCHMARK_VERSION}.tar.gz"
-        CMAKE_ARGS ${GBENCHMARK_CMAKE_ARGS})
-    endif()
+
+    ExternalProject_Add(gbenchmark_ep
+      URL "https://github.com/google/benchmark/archive/v${GBENCHMARK_VERSION}.tar.gz"
+      BUILD_BYPRODUCTS "${GBENCHMARK_STATIC_LIB}"
+      CMAKE_ARGS ${GBENCHMARK_CMAKE_ARGS})
   else()
     find_package(GBenchmark REQUIRED)
     set(GBENCHMARK_VENDORED 0)
@@ -395,23 +387,13 @@ if (ARROW_JEMALLOC)
     set(JEMALLOC_SHARED_LIB "${JEMALLOC_PREFIX}/lib/libjemalloc${CMAKE_SHARED_LIBRARY_SUFFIX}")
     set(JEMALLOC_STATIC_LIB "${JEMALLOC_PREFIX}/lib/libjemalloc_pic${CMAKE_STATIC_LIBRARY_SUFFIX}")
     set(JEMALLOC_VENDORED 1)
-    if (CMAKE_VERSION VERSION_GREATER "3.2")
-      # BUILD_BYPRODUCTS is a 3.2+ feature
-      ExternalProject_Add(jemalloc_ep
-        URL https://github.com/jemalloc/jemalloc/releases/download/${JEMALLOC_VERSION}/jemalloc-${JEMALLOC_VERSION}.tar.bz2
-        CONFIGURE_COMMAND ./configure "--prefix=${JEMALLOC_PREFIX}" "--with-jemalloc-prefix="
-        BUILD_IN_SOURCE 1
-        BUILD_COMMAND ${CMAKE_MAKE_PROGRAM}
-        BUILD_BYPRODUCTS "${JEMALLOC_STATIC_LIB}" "${JEMALLOC_SHARED_LIB}"
-        INSTALL_COMMAND ${CMAKE_MAKE_PROGRAM} -j1 install)
-    else()
-      ExternalProject_Add(jemalloc_ep
-        URL https://github.com/jemalloc/jemalloc/releases/download/${JEMALLOC_VERSION}/jemalloc-${JEMALLOC_VERSION}.tar.bz2
-        CONFIGURE_COMMAND ./configure "--prefix=${JEMALLOC_PREFIX}" "--with-jemalloc-prefix="
-        BUILD_IN_SOURCE 1
-        BUILD_COMMAND ${CMAKE_MAKE_PROGRAM}
-        INSTALL_COMMAND ${CMAKE_MAKE_PROGRAM} -j1 install)
-    endif()
+    ExternalProject_Add(jemalloc_ep
+      URL https://github.com/jemalloc/jemalloc/releases/download/${JEMALLOC_VERSION}/jemalloc-${JEMALLOC_VERSION}.tar.bz2
+      CONFIGURE_COMMAND ./configure "--prefix=${JEMALLOC_PREFIX}" "--with-jemalloc-prefix="
+      BUILD_IN_SOURCE 1
+      BUILD_COMMAND ${MAKE}
+      BUILD_BYPRODUCTS "${JEMALLOC_STATIC_LIB}" "${JEMALLOC_SHARED_LIB}"
+      INSTALL_COMMAND ${MAKE} -j1 install)
   else()
     set(JEMALLOC_VENDORED 0)
   endif()
@@ -489,12 +471,9 @@ if (NOT ZLIB_FOUND)
                       -DCMAKE_C_FLAGS=${EP_C_FLAGS}
                       -DBUILD_SHARED_LIBS=OFF)
 
-  if (CMAKE_VERSION VERSION_GREATER "3.2")
-    set(ZLIB_BUILD_BYPRODUCTS BUILD_BYPRODUCTS "${ZLIB_STATIC_LIB}")
-  endif()
   ExternalProject_Add(zlib_ep
     URL "http://zlib.net/fossils/zlib-1.2.8.tar.gz"
-    ${ZLIB_BUILD_BYPRODUCTS}
+    BUILD_BYPRODUCTS "${ZLIB_STATIC_LIB}"
     CMAKE_ARGS ${ZLIB_CMAKE_ARGS})
   set(ZLIB_VENDORED 1)
 else()
@@ -534,10 +513,6 @@ if (NOT SNAPPY_FOUND)
     endif()
   endif()
 
-  if (CMAKE_VERSION VERSION_GREATER "3.2")
-    set(SNAPPY_BUILD_BYPRODUCTS BUILD_BYPRODUCTS "${SNAPPY_STATIC_LIB}")
-  endif()
-
   if (MSVC)
     set(SNAPPY_CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
                           "-DCMAKE_CXX_FLAGS=${EP_CXX_FLAGS}"
@@ -556,7 +531,7 @@ if (NOT SNAPPY_FOUND)
       INSTALL_DIR ${SNAPPY_PREFIX}
       URL ${SNAPPY_SRC_URL}
       CMAKE_ARGS ${SNAPPY_CMAKE_ARGS}
-      ${SNAPPY_BUILD_BYPRODUCTS})
+      BUILD_BYPRODUCTS "${SNAPPY_STATIC_LIB}")
   else()
     ExternalProject_Add(snappy_ep
       CONFIGURE_COMMAND ./configure --with-pic "--prefix=${SNAPPY_PREFIX}" ${SNAPPY_CXXFLAGS}
@@ -564,7 +539,7 @@ if (NOT SNAPPY_FOUND)
       BUILD_COMMAND ${MAKE}
       INSTALL_DIR ${SNAPPY_PREFIX}
       URL ${SNAPPY_SRC_URL}
-      ${SNAPPY_BUILD_BYPRODUCTS})
+      BUILD_BYPRODUCTS "${SNAPPY_STATIC_LIB}")
   endif()
   set(SNAPPY_VENDORED 1)
 else()
@@ -602,12 +577,9 @@ if (NOT BROTLI_FOUND)
                         -DCMAKE_INSTALL_LIBDIR=lib/${CMAKE_LIBRARY_ARCHITECTURE}
                         -DBUILD_SHARED_LIBS=OFF)
 
-  if (CMAKE_VERSION VERSION_GREATER "3.2")
-    set(BROTLI_BUILD_BYPRODUCTS BUILD_BYPRODUCTS "${BROTLI_STATIC_LIBRARY_ENC}" "${BROTLI_STATIC_LIBRARY_DEC}" "${BROTLI_STATIC_LIBRARY_COMMON}")
-  endif()
-
   ExternalProject_Add(brotli_ep
     URL "https://github.com/google/brotli/archive/${BROTLI_VERSION}.tar.gz"
+    BUILD_BYPRODUCTS "${BROTLI_STATIC_LIBRARY_ENC}" "${BROTLI_STATIC_LIBRARY_DEC}" "${BROTLI_STATIC_LIBRARY_COMMON}"
     ${BROTLI_BUILD_BYPRODUCTS}
     CMAKE_ARGS ${BROTLI_CMAKE_ARGS}
     STEP_TARGETS headers_copy)
@@ -636,4 +608,84 @@ if (BROTLI_VENDORED)
   add_dependencies(brotli_enc brotli_ep)
   add_dependencies(brotli_dec brotli_ep)
   add_dependencies(brotli_common brotli_ep)
+endif()
+
+# ----------------------------------------------------------------------
+# Lz4
+
+find_package(Lz4)
+if (NOT LZ4_FOUND)
+  set(LZ4_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/lz4_ep-prefix/src/lz4_ep")
+  set(LZ4_INCLUDE_DIR "${LZ4_BUILD_DIR}/lib")
+
+  if (MSVC)
+    set(LZ4_STATIC_LIB "${LZ4_BUILD_DIR}/visual/VS2010/bin/x64_${CMAKE_BUILD_TYPE}/liblz4_static.lib")
+    set(LZ4_BUILD_COMMAND BUILD_COMMAND msbuild.exe /m /p:Configuration=${CMAKE_BUILD_TYPE} /p:Platform=x64 /p:PlatformToolset=v140 /t:Build ${LZ4_BUILD_DIR}/visual/VS2010/lz4.sln)
+  else()
+    set(LZ4_STATIC_LIB "${LZ4_BUILD_DIR}/lib/liblz4.a")
+    set(LZ4_BUILD_COMMAND BUILD_COMMAND ${CMAKE_SOURCE_DIR}/build-support/build-lz4-lib.sh)
+  endif()
+
+  ExternalProject_Add(lz4_ep
+      URL "https://github.com/lz4/lz4/archive/v${LZ4_VERSION}.tar.gz"
+      UPDATE_COMMAND ""
+      PATCH_COMMAND ""
+      CONFIGURE_COMMAND ""
+      INSTALL_COMMAND ""
+      BINARY_DIR ${LZ4_BUILD_DIR}
+      BUILD_BYPRODUCTS ${LZ4_STATIC_LIB}
+      ${LZ4_BUILD_COMMAND}
+      )
+
+  set(LZ4_VENDORED 1)
+else()
+  set(LZ4_VENDORED 0)
+endif()
+
+include_directories(SYSTEM ${LZ4_INCLUDE_DIR})
+ADD_THIRDPARTY_LIB(lz4_static
+  STATIC_LIB ${LZ4_STATIC_LIB})
+
+if (LZ4_VENDORED)
+  add_dependencies(lz4_static lz4_ep)
+endif()
+
+# ----------------------------------------------------------------------
+# ZSTD
+
+find_package(ZSTD)
+if (NOT ZSTD_FOUND)
+  set(ZSTD_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/zstd_ep-prefix/src/zstd_ep")
+  set(ZSTD_INCLUDE_DIR "${ZSTD_BUILD_DIR}/lib")
+
+  if (MSVC)
+    set(ZSTD_STATIC_LIB "${ZSTD_BUILD_DIR}/build/VS2010/bin/x64_${CMAKE_BUILD_TYPE}/libzstd_static.lib")
+    set(ZSTD_BUILD_COMMAND BUILD_COMMAND msbuild ${ZSTD_BUILD_DIR}/build/VS2010/zstd.sln /t:Build /v:minimal /p:Configuration=${CMAKE_BUILD_TYPE} /p:Platform=x64 /p:PlatformToolset=v140 /p:OutDir=${ZSTD_BUILD_DIR}/build/VS2010/bin/x64_${CMAKE_BUILD_TYPE}/ /p:SolutionDir=${ZSTD_BUILD_DIR}/build/VS2010/ )
+  else()
+    set(ZSTD_STATIC_LIB "${ZSTD_BUILD_DIR}/lib/libzstd.a")
+    set(ZSTD_BUILD_COMMAND BUILD_COMMAND ${CMAKE_SOURCE_DIR}/build-support/build-zstd-lib.sh)
+  endif()
+
+  ExternalProject_Add(zstd_ep
+      URL "https://github.com/facebook/zstd/archive/v${ZSTD_VERSION}.tar.gz"
+      UPDATE_COMMAND ""
+      PATCH_COMMAND ""
+      CONFIGURE_COMMAND ""
+      INSTALL_COMMAND ""
+      BINARY_DIR ${ZSTD_BUILD_DIR}
+      BUILD_BYPRODUCTS ${ZSTD_STATIC_LIB}
+      ${ZSTD_BUILD_COMMAND}
+      )
+
+  set(ZSTD_VENDORED 1)
+else()
+  set(ZSTD_VENDORED 0)
+endif()
+
+include_directories(SYSTEM ${ZSTD_INCLUDE_DIR})
+ADD_THIRDPARTY_LIB(zstd_static
+  STATIC_LIB ${ZSTD_STATIC_LIB})
+
+if (ZSTD_VENDORED)
+  add_dependencies(zstd_static zstd_ep)
 endif()

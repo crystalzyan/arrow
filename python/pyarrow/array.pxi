@@ -622,17 +622,46 @@ def binary(int length=-1):
     return pyarrow_wrap_data_type(fixed_size_binary_type)
 
 
-def list_(DataType value_type):
-    cdef DataType out = DataType()
+def list_(value_type):
+    """
+    Create ListType instance from child data type or field
+
+    Parameters
+    ----------
+    value_type : DataType or Field
+
+    Returns
+    -------
+    list_type : DataType
+    """
+    cdef:
+        DataType data_type
+        Field field
+
     cdef shared_ptr[CDataType] list_type
-    list_type.reset(new CListType(value_type.sp_type))
-    out.init(list_type)
-    return out
+
+    if isinstance(value_type, DataType):
+        list_type.reset(new CListType((<DataType> value_type).sp_type))
+    elif isinstance(value_type, Field):
+        list_type.reset(new CListType((<Field> value_type).sp_field))
+    else:
+        raise ValueError('List requires DataType or Field')
+
+    return pyarrow_wrap_data_type(list_type)
 
 
 def dictionary(DataType index_type, Array dictionary):
     """
     Dictionary (categorical, or simply encoded) type
+
+    Parameters
+    ----------
+    index_type : DataType
+    dictionary : Array
+
+    Returns
+    -------
+    type : DictionaryType
     """
     cdef DictionaryType out = DictionaryType()
     cdef shared_ptr[CDataType] dict_type
@@ -644,10 +673,26 @@ def dictionary(DataType index_type, Array dictionary):
 
 def struct(fields):
     """
+    Create StructType instance from fields
 
+    Parameters
+    ----------
+    fields : sequence of Field values
+
+    Examples
+    --------
+    import pyarrow as pa
+    fields = [
+        pa.field('f1', pa.int32()),
+        pa.field('f2', pa.string())
+    ]
+    struct_type = pa.struct(fields)
+
+    Returns
+    -------
+    type : DataType
     """
     cdef:
-        DataType out = DataType()
         Field field
         vector[shared_ptr[CField]] c_fields
         cdef shared_ptr[CDataType] struct_type
@@ -656,8 +701,7 @@ def struct(fields):
         c_fields.push_back(field.sp_field)
 
     struct_type.reset(new CStructType(c_fields))
-    out.init(struct_type)
-    return out
+    return pyarrow_wrap_data_type(struct_type)
 
 
 def schema(fields):
@@ -996,6 +1040,21 @@ cdef class FixedSizeBinaryValue(ArrayValue):
         return cp.PyBytes_FromStringAndSize(data, length)
 
 
+cdef class StructValue(ArrayValue):
+    def as_py(self):
+        cdef:
+            CStructArray* ap
+            vector[shared_ptr[CField]] child_fields = self.type.type.children()
+        ap = <CStructArray*> self.sp_array.get()
+        child_arrays = ap.fields()
+        wrapped_arrays = (pyarrow_wrap_array(child) for child in child_arrays)
+        child_names = (child.get().name() for child in child_fields)
+        # Return the struct as a dict
+        return {
+            frombytes(name): child_array[self.index].as_py()
+            for name, child_array in
+            zip(child_names, wrapped_arrays)
+        }
 
 cdef dict _scalar_classes = {
     _Type_BOOL: BooleanValue,
@@ -1019,6 +1078,7 @@ cdef dict _scalar_classes = {
     _Type_STRING: StringValue,
     _Type_FIXED_SIZE_BINARY: FixedSizeBinaryValue,
     _Type_DECIMAL: DecimalValue,
+    _Type_STRUCT: StructValue,
 }
 
 cdef object box_scalar(DataType type, const shared_ptr[CArray]& sp_array,
@@ -1589,6 +1649,42 @@ cdef class DictionaryArray(Array):
         result.init(c_result)
         return result
 
+cdef class StructArray(Array):
+    @staticmethod
+    def from_arrays(field_names, arrays):
+        cdef:
+            Array array
+            shared_ptr[CArray] c_array
+            vector[shared_ptr[CArray]] c_arrays
+            shared_ptr[CArray] c_result
+            ssize_t num_arrays
+            ssize_t length
+            ssize_t i
+
+        num_arrays = len(arrays)
+        if num_arrays == 0:
+            raise ValueError("arrays list is empty")
+
+        length = len(arrays[0])
+
+        c_arrays.resize(num_arrays)
+        for i in range(num_arrays):
+            array = arrays[i]
+            if len(array) != length:
+                raise ValueError("All arrays must have the same length")
+            c_arrays[i] = array.sp_array
+
+        cdef DataType struct_type = struct([
+            field(name, array.type)
+            for name, array in
+            zip(field_names, arrays)
+        ])
+
+        c_result.reset(new CStructArray(struct_type.sp_type, length, c_arrays))
+        result = StructArray()
+        result.init(c_result)
+        return result
+
 
 cdef dict _array_classes = {
     _Type_NA: NullArray,
@@ -1614,6 +1710,7 @@ cdef dict _array_classes = {
     _Type_DICTIONARY: DictionaryArray,
     _Type_FIXED_SIZE_BINARY: FixedSizeBinaryArray,
     _Type_DECIMAL: DecimalArray,
+    _Type_STRUCT: StructArray,
 }
 
 

@@ -86,4 +86,12 @@ TEST(TestCompressors, GZip) {
   CheckCodec<GZipCodec>();
 }
 
+TEST(TestCompressors, ZSTD) {
+  CheckCodec<ZSTDCodec>();
+}
+
+TEST(TestCompressors, Lz4) {
+  CheckCodec<Lz4Codec>();
+}
+
 }  // namespace arrow
