@@ -17,6 +17,8 @@
 
 // PLASMA CLIENT: Client library for using the plasma store and manager
 
+#include "plasma/common.h"
+
 #include "plasma/client.h"
 
 #ifdef _WIN32

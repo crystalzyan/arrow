@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include "plasma/common.h"
+
 #include "plasma/extension.h"
 
 #include <algorithm>
@@ -431,12 +433,13 @@ static struct PyModuleDef moduledef = {
 #define MOD_INIT(name) PyMODINIT_FUNC init##name(void)
 #endif
 
-MOD_INIT(libplasma) {
+#pragma GCC visibility push(default)
+MOD_INIT(libplasma_extension) {
 #if PY_MAJOR_VERSION >= 3
   PyObject* m = PyModule_Create(&moduledef);
 #else
   PyObject* m =
-      Py_InitModule3("libplasma", plasma_methods, "A Python client library for plasma.");
+      Py_InitModule3("libplasma_extension", plasma_methods, "A Python client library for plasma.");
 #endif
 
   /* Create a custom exception for when an object ID is reused. */
@@ -454,3 +457,4 @@ MOD_INIT(libplasma) {
   return m;
 #endif
 }
+#pragma GCC visibility pop

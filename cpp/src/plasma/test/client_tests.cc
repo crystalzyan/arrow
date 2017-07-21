@@ -24,6 +24,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "plasma/common.h"
+
 #include "plasma/client.h"
 #include "plasma/common.h"
 #include "plasma/plasma.h"
