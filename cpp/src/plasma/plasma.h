@@ -131,12 +131,12 @@ struct PlasmaStoreInfo {
   int64_t memory_capacity;
 };
 
-/// Get an entry from the object table and return NULL if the object_id
-/// is not present.
+/// Get the entry from the object table corresponding to a given object_id, or 
+/// return NULL if the object_id is not present.
 ///
 /// @param store_info The PlasmaStoreInfo that contains the object table.
 /// @param object_id The object_id of the entry we are looking for.
-/// @return The entry associated with the object_id or NULL if the object_id
+/// @return The entry associated with the object_id, or NULL if the object_id
 ///         is not present.
 ObjectTableEntry* get_object_table_entry(
     PlasmaStoreInfo* store_info, const ObjectID& object_id);
