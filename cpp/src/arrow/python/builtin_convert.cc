@@ -44,7 +44,8 @@ static inline bool IsPyInteger(PyObject* obj) {
 #endif
 }
 
-Status InvalidConversion(PyObject* obj, const std::string& expected_type_name) {
+Status InvalidConversion(
+    PyObject* obj, const std::string& expected_types, std::ostream* out) {
   OwnedRef type(PyObject_Type(obj));
   RETURN_IF_PYERROR();
   DCHECK_NE(type.obj(), nullptr);
@@ -63,10 +64,9 @@ Status InvalidConversion(PyObject* obj, const std::string& expected_type_name) {
 
   std::string cpp_type_name(bytes, size);
 
-  std::stringstream ss;
-  ss << "Python object of type " << cpp_type_name << " is not None and is not a "
-     << expected_type_name << " object";
-  return Status::Invalid(ss.str());
+  (*out) << "Got Python object of type " << cpp_type_name
+         << " but can only handle these types: " << expected_types;
+  return Status::OK();
 }
 
 class ScalarVisitor {
@@ -82,7 +82,7 @@ class ScalarVisitor {
         binary_count_(0),
         unicode_count_(0) {}
 
-  void Visit(PyObject* obj) {
+  Status Visit(PyObject* obj) {
     ++total_count_;
     if (obj == Py_None) {
       ++none_count_;
@@ -102,7 +102,14 @@ class ScalarVisitor {
       ++unicode_count_;
     } else {
       // TODO(wesm): accumulate error information somewhere
+      static std::string supported_types =
+          "bool, float, integer, date, datetime, bytes, unicode";
+      std::stringstream ss;
+      ss << "Error inferring Arrow data type for collection of Python objects. ";
+      RETURN_NOT_OK(InvalidConversion(obj, supported_types, &ss));
+      return Status::Invalid(ss.str());
     }
+    return Status::OK();
   }
 
   std::shared_ptr<DataType> GetType() {
@@ -155,14 +162,20 @@ class SeqVisitor {
   // co-recursive with VisitElem
   Status Visit(PyObject* obj, int level = 0) {
     if (level > max_nesting_level_) { max_nesting_level_ = level; }
-
     // Loop through either a sequence or an iterator.
     if (PySequence_Check(obj)) {
       Py_ssize_t size = PySequence_Size(obj);
       for (int64_t i = 0; i < size; ++i) {
-        // TODO(wesm): Specialize for PyList_GET_ITEM?
-        OwnedRef ref = OwnedRef(PySequence_GetItem(obj, i));
-        RETURN_NOT_OK(VisitElem(ref, level));
+        OwnedRef ref;
+        if (PyArray_Check(obj)) {
+          auto array = reinterpret_cast<PyArrayObject*>(obj);
+          auto ptr = reinterpret_cast<const char*>(PyArray_GETPTR1(array, i));
+          ref.reset(PyArray_GETITEM(array, ptr));
+          RETURN_NOT_OK(VisitElem(ref, level));
+        } else {
+          ref.reset(PySequence_GetItem(obj, i));
+          RETURN_NOT_OK(VisitElem(ref, level));
+        }
       }
     } else if (PyObject_HasAttrString(obj, "__iter__")) {
       OwnedRef iter = OwnedRef(PyObject_GetIter(obj));
@@ -249,7 +262,7 @@ class SeqVisitor {
         // TODO
       } else {
         ++nesting_histogram_[level];
-        scalars_.Visit(item_ref.obj());
+        return scalars_.Visit(item_ref.obj());
       }
     }
     return Status::OK();
@@ -280,21 +293,28 @@ Status InferArrowSize(PyObject* obj, int64_t* size) {
 }
 
 // Non-exhaustive type inference
-Status InferArrowTypeAndSize(
-    PyObject* obj, int64_t* size, std::shared_ptr<DataType>* out_type) {
-  RETURN_NOT_OK(InferArrowSize(obj, size));
-
-  // For 0-length sequences, refuse to guess
-  if (*size == 0) { *out_type = null(); }
-
+Status InferArrowType(PyObject* obj, std::shared_ptr<DataType>* out_type) {
   PyDateTime_IMPORT;
   SeqVisitor seq_visitor;
   RETURN_NOT_OK(seq_visitor.Visit(obj));
   RETURN_NOT_OK(seq_visitor.Validate());
 
   *out_type = seq_visitor.GetType();
-
   if (*out_type == nullptr) { return Status::TypeError("Unable to determine data type"); }
+
+  return Status::OK();
+}
+
+Status InferArrowTypeAndSize(
+    PyObject* obj, int64_t* size, std::shared_ptr<DataType>* out_type) {
+  RETURN_NOT_OK(InferArrowSize(obj, size));
+
+  // For 0-length sequences, refuse to guess
+  if (*size == 0) {
+    *out_type = null();
+    return Status::OK();
+  }
+  RETURN_NOT_OK(InferArrowType(obj, out_type));
 
   return Status::OK();
 }
@@ -449,7 +469,10 @@ class BytesConverter : public TypedConverterVisitor<BinaryBuilder, BytesConverte
     } else if (PyBytes_Check(item.obj())) {
       bytes_obj = item.obj();
     } else {
-      return InvalidConversion(item.obj(), "bytes");
+      std::stringstream ss;
+      ss << "Error converting to Binary type: ";
+      RETURN_NOT_OK(InvalidConversion(item.obj(), "bytes", &ss));
+      return Status::Invalid(ss.str());
     }
     // No error checking
     length = PyBytes_GET_SIZE(bytes_obj);
@@ -476,7 +499,10 @@ class FixedWidthBytesConverter
     } else if (PyBytes_Check(item.obj())) {
       bytes_obj = item.obj();
     } else {
-      return InvalidConversion(item.obj(), "bytes");
+      std::stringstream ss;
+      ss << "Error converting to FixedSizeBinary type: ";
+      RETURN_NOT_OK(InvalidConversion(item.obj(), "bytes", &ss));
+      return Status::Invalid(ss.str());
     }
     // No error checking
     RETURN_NOT_OK(CheckPythonBytesAreFixedLength(bytes_obj, expected_length));

@@ -142,9 +142,26 @@ if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
     "Build with SSE4 optimizations"
     OFF)
 
-  option(ARROW_ZLIB_VENDORED
-    "Build our own zlib (some libz.a aren't configured for static linking)"
+  option(ARROW_WITH_BROTLI
+    "Build with Brotli compression"
     ON)
+
+  option(ARROW_WITH_LZ4
+    "Build with lz4 compression"
+    ON)
+
+  option(ARROW_WITH_SNAPPY
+    "Build with Snappy compression"
+    ON)
+
+  option(ARROW_WITH_ZLIB
+    "Build with zlib compression"
+    ON)
+
+  option(ARROW_WITH_ZSTD
+    "Build with zstd compression"
+    ON)
+
   if (MSVC)
     set(BROTLI_MSVC_STATIC_LIB_SUFFIX "_static" CACHE STRING
       "Brotli static lib suffix used on Windows with MSVC (default _static)")
@@ -152,12 +169,23 @@ if("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
       "Snappy static lib suffix used on Windows with MSVC (default is empty string)")
     set(ZLIB_MSVC_STATIC_LIB_SUFFIX "libstatic" CACHE STRING
       "Zlib static lib suffix used on Windows with MSVC (default libstatic)")
+    set(LZ4_MSVC_STATIC_LIB_SUFFIX "_static" CACHE STRING
+      "Lz4 static lib suffix used on Windows with MSVC (default _static)")
+    set(ZSTD_MSVC_STATIC_LIB_SUFFIX "_static" CACHE STRING
+      "ZStd static lib suffix used on Windows with MSVC (default _static)")
   endif()
 endif()
 
-if(ARROW_BUILD_TESTS)
+if(ARROW_BUILD_TESTS OR ARROW_BUILD_BENCHMARKS)
   set(ARROW_BUILD_STATIC ON)
-else()
+  set(ARROW_WITH_BROTLI ON)
+  set(ARROW_WITH_LZ4 ON)
+  set(ARROW_WITH_SNAPPY ON)
+  set(ARROW_WITH_ZLIB ON)
+  set(ARROW_WITH_ZSTD ON)
+endif()
+
+if(NOT ARROW_BUILD_TESTS)
   set(NO_TESTS 1)
 endif()
 
@@ -490,25 +518,22 @@ endif (UNIX)
 ############################################################
 # "make format" and "make check-format" targets
 ############################################################
-if (${CLANG_FORMAT_FOUND})
-  # runs clang format and updates files in place.
-  add_custom_target(format ${BUILD_SUPPORT_DIR}/run-clang-format.sh ${CMAKE_CURRENT_SOURCE_DIR} ${CLANG_FORMAT_BIN} 1
-    `find ${CMAKE_CURRENT_SOURCE_DIR}/src -name \\*.cc -or -name \\*.h |
-    sed -e '/_generated/g' |
-    sed -e '/windows_compatibility.h/g' |
-    sed -e '/pyarrow_api.h/g' |
-    sed -e '/config.h/g' |   # python/config.h
-    sed -e '/platform.h/g' |  # python/platform.h
-    sed -e '/ae.h/g' |
-    sed -e '/xxhash.cc/g' |
-    sed -e '/xxhash.h/g'`
-    )
 
-  # runs clang format and exits with a non-zero exit code if any files need to be reformatted
-  add_custom_target(check-format ${BUILD_SUPPORT_DIR}/run-clang-format.sh ${CMAKE_CURRENT_SOURCE_DIR} ${CLANG_FORMAT_BIN} 0
-  `find ${CMAKE_CURRENT_SOURCE_DIR}/src -name \\*.cc -or -name \\*.h | sed -e '/_generated/g'`)
-endif()
+set(CLANG_FORMAT_VERSION 3.9)
 
+# runs clang format and updates files in place.
+add_custom_target(format ${BUILD_SUPPORT_DIR}/run_clang_format.py
+  ${CLANG_FORMAT_VERSION}
+  ${BUILD_SUPPORT_DIR}/clang_format_exclusions.txt
+  ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# runs clang format and exits with a non-zero exit code if any files need to be reformatted
+
+# TODO(wesm): Make this work in run_clang_format.py
+# add_custom_target(check-format ${BUILD_SUPPORT_DIR}/run_clang_format.py
+#   ${CLANG_FORMAT_VERSION}
+#   ${BUILD_SUPPORT_DIR}/clang_format_exclusions.txt
+#   ${CMAKE_CURRENT_SOURCE_DIR}/src 1)
 
 ############################################################
 # "make clang-tidy" and "make check-clang-tidy" targets
@@ -527,16 +552,35 @@ endif()
 # Linker and Dependencies
 ############################################################
 
-set(ARROW_STATIC_LINK_LIBS
-  brotli_dec
-  brotli_enc
-  brotli_common
-  snappy
-  zlib
-  zstd_static
-  lz4_static)
+set(ARROW_STATIC_LINK_LIBS)
 
-add_dependencies(arrow_dependencies ${ARROW_STATIC_LINK_LIBS})
+if (ARROW_WITH_BROTLI)
+  SET(ARROW_STATIC_LINK_LIBS
+    brotli_dec
+    brotli_enc
+    brotli_common
+    ${ARROW_STATIC_LINK_LIBS})
+endif()
+
+if (ARROW_WITH_LZ4)
+  SET(ARROW_STATIC_LINK_LIBS lz4_static ${ARROW_STATIC_LINK_LIBS})
+endif()
+
+if (ARROW_WITH_SNAPPY)
+  SET(ARROW_STATIC_LINK_LIBS snappy ${ARROW_STATIC_LINK_LIBS})
+endif()
+
+if (ARROW_WITH_ZLIB)
+  SET(ARROW_STATIC_LINK_LIBS zlib ${ARROW_STATIC_LINK_LIBS})
+endif()
+
+if (ARROW_WITH_ZSTD)
+  SET(ARROW_STATIC_LINK_LIBS zstd_static ${ARROW_STATIC_LINK_LIBS})
+endif()
+
+if (ARROW_STATIC_LINK_LIBS)
+  add_dependencies(arrow_dependencies ${ARROW_STATIC_LINK_LIBS})
+endif()
 
 set(ARROW_MIN_TEST_LIBS
   arrow_static
@@ -646,7 +690,6 @@ set(ARROW_SRCS
   src/arrow/buffer.cc
   src/arrow/builder.cc
   src/arrow/compare.cc
-  src/arrow/loader.cc
   src/arrow/memory_pool.cc
   src/arrow/pretty_print.cc
   src/arrow/status.cc
@@ -665,6 +708,31 @@ set(ARROW_SRCS
   src/arrow/util/decimal.cc
   src/arrow/util/key_value_metadata.cc
 )
+
+if (ARROW_WITH_BROTLI)
+  add_definitions(-DARROW_WITH_BROTLI)
+  SET(ARROW_SRCS src/arrow/util/compression_brotli.cc ${ARROW_SRCS})
+endif()
+
+if (ARROW_WITH_LZ4)
+  add_definitions(-DARROW_WITH_LZ4)
+  SET(ARROW_SRCS src/arrow/util/compression_lz4.cc ${ARROW_SRCS})
+endif()
+
+if (ARROW_WITH_SNAPPY)
+  add_definitions(-DARROW_WITH_SNAPPY)
+  SET(ARROW_SRCS src/arrow/util/compression_snappy.cc ${ARROW_SRCS})
+endif()
+
+if (ARROW_WITH_ZLIB)
+  add_definitions(-DARROW_WITH_ZLIB)
+  SET(ARROW_SRCS src/arrow/util/compression_zlib.cc ${ARROW_SRCS})
+endif()
+
+if (ARROW_WITH_ZSTD)
+  add_definitions(-DARROW_WITH_ZSTD)
+  SET(ARROW_SRCS src/arrow/util/compression_zstd.cc ${ARROW_SRCS})
+endif()
 
 if (NOT ARROW_BOOST_HEADER_ONLY)
   set(ARROW_SRCS ${ARROW_SRCS}
