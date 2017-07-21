@@ -79,8 +79,10 @@ class EventLoop {
 
   /// Remove a timer handler from the event loop.
   ///
+  /// @todo To pcm-- Error code needs to be standardized
+  ///
   /// @param timer_id The ID of the timer that is to be removed.
-  /// @return The ae.c error code. TODO(pcm): needs to be standardized
+  /// @return The ae.c error code. 
   int remove_timer(int64_t timer_id);
 
   /// Run the event loop.

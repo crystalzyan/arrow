@@ -85,15 +85,15 @@ class ARROW_EXPORT PlasmaClient {
   /// @param store_socket_name The name of the UNIX domain socket to use to
   ///        connect to the Plasma store.
   /// @param manager_socket_name The name of the UNIX domain socket to use to
-  ///        connect to the local Plasma manager. If this is "", then this
-  ///        function will not connect to a manager.
+  ///        connect to the local Plasma manager. If set to the empty string "",
+  ///        this function will not connect to a manager.
   /// @param release_delay Number of released objects that are kept around
   ///        and not evicted to avoid too many munmaps.
   /// @return The return status.
   Status Connect(const std::string& store_socket_name,
       const std::string& manager_socket_name, int release_delay);
 
-  /// Create an object in the Plasma Store. Any metadata for this object must be
+  /// Create an object in the Plasma Store. All metadata for this object must be
   /// be passed in when the object is created.
   ///
   /// @param object_id The ID to use for the newly created object.
@@ -111,7 +111,7 @@ class ARROW_EXPORT PlasmaClient {
       int64_t metadata_size, uint8_t** data);
 
   /// Get some objects from the Plasma Store. This function will block until the
-  /// objects have all been created and sealed in the Plasma Store or the
+  /// objects have all been created and sealed in the Plasma Store, or until the
   /// timeout
   /// expires. The caller is responsible for releasing any retrieved objects,
   /// but
@@ -120,7 +120,7 @@ class ARROW_EXPORT PlasmaClient {
   /// @param object_ids The IDs of the objects to get.
   /// @param num_object_ids The number of object IDs to get.
   /// @param timeout_ms The amount of time in milliseconds to wait before this
-  ///        request times out. If this value is -1, then no timeout is set.
+  ///        request times out. If this value is set to -1, no timeout will be set.
   /// @param object_buffers An array where the results will be stored. If the
   /// data
   ///        size field is -1, then the object was not retrieved.
@@ -128,25 +128,24 @@ class ARROW_EXPORT PlasmaClient {
   Status Get(const ObjectID* object_ids, int64_t num_objects, int64_t timeout_ms,
       ObjectBuffer* object_buffers);
 
-  /// Tell Plasma that the client no longer needs the object. This should be
-  /// called
-  /// after Get when the client is done with the object. After this call,
-  /// the address returned by Get is no longer valid. This should be called
-  /// once for each call to Get (with the same object ID).
+  /// Tell Plasma that the client no longer needs the object. After the client is 
+  /// done with the object, this function should be called once for each call to 
+  /// PlasmaClient::Get made with this specific object ID. After calling this function, 
+  /// the address returned by PlasmaClient::Get will no longer be valid. 
   ///
   /// @param object_id The ID of the object that is no longer needed.
   /// @return The return status.
   Status Release(const ObjectID& object_id);
 
-  /// Check if the object store contains a particular object and the object has
-  /// been sealed. The result will be stored in has_object.
+  /// Check if the object store contains a particular object, and if the object
+  /// has been sealed. The result will be stored in has_object.
   ///
-  /// @todo: We may want to indicate if the object has been created but not
+  /// @todo We may want to indicate if the object has been created but not
   /// sealed.
   ///
   /// @param object_id The ID of the object whose presence we are checking.
-  /// @param has_object The function will write true at this address if
-  ///        the object is present and false if it is not present.
+  /// @param has_object The pointer to return the result. Function writes true at 
+  ///        this address if the object is present, and false if it is not present.
   /// @return The return status.
   Status Contains(const ObjectID& object_id, bool* has_object);
 
@@ -158,8 +157,8 @@ class ARROW_EXPORT PlasmaClient {
   /// @return The return status.
   Status Seal(const ObjectID& object_id);
 
-  /// Delete an object from the object store. This currently assumes that the
-  /// object is present and has been sealed.
+  /// Delete an object from the object store. This function currently assumes that
+  /// the object is present and has been sealed.
   ///
   /// @todo We may want to allow the deletion of objects that are not present or
   ///       haven't been sealed.
@@ -168,18 +167,17 @@ class ARROW_EXPORT PlasmaClient {
   /// @return The return status.
   Status Delete(const ObjectID& object_id);
 
-  /// Delete objects until we have freed up num_bytes bytes or there are no more
-  /// released objects that can be deleted.
+  /// Delete objects until we have freed up num_bytes bytes, or until there are no
+  /// more released objects that can be deleted.
   ///
   /// @param num_bytes The number of bytes to try to free up.
-  /// @param num_bytes_evicted Out parameter for total number of bytes of space
-  /// retrieved.
+  /// @param num_bytes_evicted The total number of bytes freed by this function
+  /// will be returned in here.
   /// @return The return status.
   Status Evict(int64_t num_bytes, int64_t& num_bytes_evicted);
 
   /// Compute the hash of an object in the object store.
   ///
-  /// @param conn The object containing the connection state.
   /// @param object_id The ID of the object we want to hash.
   /// @param digest A pointer at which to return the hash digest of the object.
   ///        The pointer must have at least kDigestSize bytes allocated.
@@ -188,20 +186,24 @@ class ARROW_EXPORT PlasmaClient {
 
   /// Subscribe to notifications when objects are sealed in the object store.
   /// Whenever an object is sealed, a message will be written to the client
-  /// socket that is returned by this method.
+  /// socket returned by this method.
   ///
-  /// @param fd Out parameter for the file descriptor the client should use to
+  /// @param fd Pointer to return the file descriptor that the client should use to
   /// read notifications
   ///         from the object store about sealed objects.
   /// @return The return status.
   Status Subscribe(int* fd);
 
-  /// Receive next object notification for this client if Subscribe has been called.
+  /// Receive next object notification for this client if PlasmaClient::Subscribe has 
+  /// been called.
   ///
   /// @param fd The file descriptor we are reading the notification from.
-  /// @param object_id Out parameter, the object_id of the object that was sealed.
-  /// @param data_size Out parameter, the data size of the object that was sealed.
-  /// @param metadata_size Out parameter, the metadata size of the object that was sealed.
+  /// @param object_id Pointer to return the next notification: The object_id of the 
+  ///        object that was sealed.
+  /// @param data_size Pointer to return the next notification: The data size of the 
+  ///        object that was sealed.
+  /// @param metadata_size Pointer to return the next notification: The metadata size 
+  ///        of the object that was sealed.
   /// @return The return status.
   Status GetNotification(
       int fd, ObjectID* object_id, int64_t* data_size, int64_t* metadata_size);
@@ -219,7 +221,9 @@ class ARROW_EXPORT PlasmaClient {
   ///
   /// For an object that is available in the local Plasma Store, this method
   /// will
-  /// not do anything. For an object that is not available locally, it will
+  /// not do anything. 
+  /// 
+  /// For an object that is not available locally, it will
   /// check
   /// if the object are already being fetched. If so, it will not do anything.
   /// If
@@ -239,9 +243,9 @@ class ARROW_EXPORT PlasmaClient {
   /// @return The return status.
   Status Fetch(int num_object_ids, const ObjectID* object_ids);
 
-  /// Wait for (1) a specified number of objects to be available (sealed) in the
-  /// local Plasma Store or in a remote Plasma Store, or (2) for a timeout to
-  /// expire. This is a blocking call.
+  /// Wait until the specified number of objects is available (sealed) in a
+  /// local or remote Plasma Store, or until the specified timeout expires.
+  /// This is a blocking call.
   ///
   /// @param num_object_requests Size of the object_requests array.
   /// @param object_requests Object event array. Each element contains a request
@@ -249,15 +253,14 @@ class ARROW_EXPORT PlasmaClient {
   ///        "type" field.
   ///        - A PLASMA_QUERY_LOCAL request is satisfied when object_id becomes
   ///          available in the local Plasma Store. In this case, this function
-  ///          sets the "status" field to ObjectStatus_Local. Note, if the
-  ///          status
-  ///          is not ObjectStatus_Local, it will be ObjectStatus_Nonexistent,
-  ///          but it may exist elsewhere in the system.
+  ///          sets the "status" field to ObjectStatus_Local. Otherwise, the 
+  ///          function will set it to ObjectStatus_Nonexistent,
+  ///          even though it may exist elsewhere in the system.
   ///        - A PLASMA_QUERY_ANYWHERE request is satisfied when object_id
-  ///        becomes
+  ///          becomes
   ///          available either at the local Plasma Store or on a remote Plasma
   ///          Store. In this case, the functions sets the "status" field to
-  ///          ObjectStatus_Local or ObjectStatus_Remote.
+  ///          ObjectStatus_Local or ObjectStatus_Remote respectively.
   /// @param num_ready_objects The number of requests in object_requests array
   /// that
   ///        must be satisfied before the function returns, unless it timeouts.
@@ -266,34 +269,33 @@ class ARROW_EXPORT PlasmaClient {
   ///        before min_num_ready_objects of requests are satisfied, the
   ///        function
   ///        returns.
-  /// @param num_objects_ready Out parameter for number of satisfied requests in
+  /// @param num_objects_ready Pointer to return the number of satisfied requests in
   ///        the object_requests list. If the returned number is less than
-  ///        min_num_ready_objects this means that timeout expired.
+  ///        min_num_ready_objects, this means the function returned because the 
+  ///        timeout expired.
   /// @return The return status.
   Status Wait(int64_t num_object_requests, ObjectRequest* object_requests,
       int num_ready_objects, int64_t timeout_ms, int* num_objects_ready);
 
   /// Transfer local object to a different plasma manager.
   ///
-  /// @param conn The object containing the connection state.
   /// @param addr IP address of the plasma manager we are transfering to.
   /// @param port Port of the plasma manager we are transfering to.
-  /// @object_id ObjectID of the object we are transfering.
+  /// @param object_id ObjectID of the object we are transfering.
   /// @return The return status.
   Status Transfer(const char* addr, int port, const ObjectID& object_id);
 
   /// Return the status of a given object. This method may query the object
   /// table.
   ///
-  /// @param conn The object containing the connection state.
   /// @param object_id The ID of the object whose status we query.
-  /// @param object_status Out parameter for object status. Can take the
-  ///         following values.
+  /// @param object_status A pointer to return the object status to. Can take the
+  ///         following values:
   ///         - PLASMA_CLIENT_LOCAL, if object is stored in the local Plasma
-  ///         Store.
+  ///           Store and
   ///           has been already scheduled by the Plasma Manager.
   ///         - PLASMA_CLIENT_TRANSFER, if the object is either currently being
-  ///           transferred or just scheduled.
+  ///           transferred or just being scheduled.
   ///         - PLASMA_CLIENT_REMOTE, if the object is stored at a remote
   ///           Plasma Store.
   ///         - PLASMA_CLIENT_DOES_NOT_EXIST, if the object doesn’t exist in the
@@ -303,9 +305,8 @@ class ARROW_EXPORT PlasmaClient {
 
   /// Get the file descriptor for the socket connection to the plasma manager.
   ///
-  /// @param conn The plasma connection.
   /// @return The file descriptor for the manager connection. If there is no
-  ///         connection to the manager, this is -1.
+  ///         connection to the manager, the function will return -1.
   int get_manager_fd();
 
  private:

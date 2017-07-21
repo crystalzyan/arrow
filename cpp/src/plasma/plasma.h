@@ -63,9 +63,9 @@ typedef std::unordered_map<ObjectID, ObjectRequest, UniqueIDHasher> ObjectReques
 
 /// Handle to access memory mapped file and map it into client address space.
 struct object_handle {
-  /// The file descriptor of the memory mapped file in the store. It is used as
-  /// a unique identifier of the file in the client to look up the corresponding
-  /// file descriptor on the client's side.
+  /// The file descriptor of the memory mapped file in the store. This is used as 
+  /// a unique identifier for the file by the client, and can be used to look up the 
+  /// corresponding file descriptor used in the client's side.
   int store_fd;
   /// The size in bytes of the memory mapped file.
   int64_t mmap_size;
@@ -99,8 +99,8 @@ enum object_status {
   OBJECT_FOUND = 1
 };
 
-/// This type is used by the Plasma store. It is here because it is exposed to
-/// the eviction policy.
+/// This type is used by the Plasma store. This is defined here, so it can be 
+/// exposed to the eviction policy.
 struct ObjectTableEntry {
   /// Object id of this object.
   ObjectID object_id;

@@ -64,10 +64,10 @@ class EvictionPolicy {
   ///        to the eviction policy.
   explicit EvictionPolicy(PlasmaStoreInfo* store_info);
 
-  /// This method will be called whenever an object is first created in order to
-  /// add it to the LRU cache. This is done so that the first time, the Plasma
-  /// store calls begin_object_access, we can remove the object from the LRU
-  /// cache.
+  /// This method will be called whenever an object is first created, in order to
+  /// add it to the LRU cache. This is done so when the Plasma store calls
+  /// begin_object_access for the first time, we can remove the object from the LRU
+  /// cache as usual.
   ///
   /// @param object_id The object ID of the object that was created.
   /// @return Void.
@@ -75,9 +75,11 @@ class EvictionPolicy {
 
   /// This method will be called when the Plasma store needs more space, perhaps
   /// to create a new object. If the required amount of space cannot be freed up,
-  /// then a fatal error will be thrown. When this method is called, the eviction
-  /// policy will assume that the objects chosen to be evicted will in fact be
-  /// evicted from the Plasma store by the caller.
+  /// then a fatal error will be thrown. Whenever this method is called, the
+  /// caller has the burden of handling the objects stored afterwards in 
+  /// objects_to_evict. This is because the eviction policy will assume that 
+  /// the caller has indeed evicted the objects the policy has chosen to evict from 
+  /// the Plasma store.
   ///
   /// @param size The size in bytes of the new object, including both data and
   ///        metadata.
@@ -87,9 +89,10 @@ class EvictionPolicy {
   bool require_space(int64_t size, std::vector<ObjectID>* objects_to_evict);
 
   /// This method will be called whenever an unused object in the Plasma store
-  /// starts to be used. When this method is called, the eviction policy will
-  /// assume that the objects chosen to be evicted will in fact be evicted from
-  /// the Plasma store by the caller.
+  /// starts to be used. Whenever this method is called, the caller has the burden 
+  /// of handling the objects stored afterwards in objects_to_evict. This is because 
+  /// the eviction policy will assume that the caller has indeed evicted the objects 
+  /// the policy has chosen to evict from the Plasma store.
   ///
   /// @param object_id The ID of the object that is now being used.
   /// @param objects_to_evict The object IDs that were chosen for eviction will
@@ -99,9 +102,11 @@ class EvictionPolicy {
       const ObjectID& object_id, std::vector<ObjectID>* objects_to_evict);
 
   /// This method will be called whenever an object in the Plasma store that was
-  /// being used is no longer being used. When this method is called, the
-  /// eviction policy will assume that the objects chosen to be evicted will in
-  /// fact be evicted from the Plasma store by the caller.
+  /// being used is no longer being used. Whenever this method is called, the
+  /// caller has the burden of handling the objects stored afterwards in 
+  /// objects_to_evict. This is because the eviction policy will assume that 
+  /// the caller has indeed evicted the objects the policy has chosen to evict from 
+  /// the Plasma store.
   ///
   /// @param object_id The ID of the object that is no longer being used.
   /// @param objects_to_evict The object IDs that were chosen for eviction will
@@ -110,9 +115,11 @@ class EvictionPolicy {
   void end_object_access(
       const ObjectID& object_id, std::vector<ObjectID>* objects_to_evict);
 
-  /// Choose some objects to evict from the Plasma store. When this method is
-  /// called, the eviction policy will assume that the objects chosen to be
-  /// evicted will in fact be evicted from the Plasma store by the caller.
+  /// Choose some objects to evict from the Plasma store. Whenever this method is 
+  /// called, the caller has the burden of handling the objects stored afterwards in 
+  /// objects_to_evict. This is because the eviction policy will assume that 
+  /// the caller has indeed evicted the objects the policy has chosen to evict from 
+  /// the Plasma store.
   ///
   /// @note This method is not part of the API. It is exposed in the header file
   /// only for testing.

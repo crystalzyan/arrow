@@ -60,9 +60,9 @@ static std::vector<std::thread> threadpool_(kThreadPoolSize);
 
 struct ObjectInUseEntry {
   /// A count of the number of times this client has called PlasmaClient::Create
-  /// or
-  /// PlasmaClient::Get on this object ID minus the number of calls to
-  /// PlasmaClient::Release.
+  /// or PlasmaClient::Get on this object ID, minus the number of times the client 
+  /// has called PlasmaClient::Release.
+  /// 
   /// When this count reaches zero, we remove the entry from the ObjectsInUse
   /// and decrement a count in the relevant ClientMmapTableEntry.
   int count;

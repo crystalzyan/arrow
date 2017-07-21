@@ -67,7 +67,7 @@ constexpr int64_t kDigestSize = sizeof(uint64_t);
 
 /// Object request data structure. Used for Wait.
 struct ObjectRequest {
-  /// The ID of the requested object. If ID_NIL request any object.
+  /// The ID of the requested object. If equals ID_NIL, request any object.
   ObjectID object_id;
   /// Request associated to the object. It can take one of the following values:
   ///  - PLASMA_QUERY_LOCAL: return if or when the object is available in the

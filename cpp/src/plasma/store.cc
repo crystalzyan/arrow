@@ -68,8 +68,8 @@ struct GetRequest {
   GetRequest(Client* client, const std::vector<ObjectID>& object_ids);
   /// The client that called get.
   Client* client;
-  /// The ID of the timer that will time out and cause this wait to return to
-  ///  the client if it hasn't already returned.
+  /// The ID of the timer. If this wait hasn't already returned by the time 
+  /// this timer finally times out, it will cause this wait to return.
   int64_t timer;
   /// The object IDs involved in this request. This is used in the reply.
   std::vector<ObjectID> object_ids;
@@ -432,13 +432,6 @@ void PlasmaStore::disconnect_client(Client* client) {
   delete client;
 }
 
-/// Send notifications about sealed objects to the subscribers. This is called
-/// in seal_object. If the socket's send buffer is full, the notification will
-/// be
-/// buffered, and this will be called again when the send buffer has room.
-///
-/// @param client The client to send the notification to.
-/// @return Void.
 void PlasmaStore::send_notifications(int client_fd) {
   auto it = pending_notifications_.find(client_fd);
 

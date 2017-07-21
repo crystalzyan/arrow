@@ -57,6 +57,8 @@ class PlasmaStore {
   /// @param object_id Object ID of the object to be created.
   /// @param data_size Size in bytes of the object to be created.
   /// @param metadata_size Size in bytes of the object metadata.
+  /// @param client The client that is creating the object.
+  /// @param result The object that was created.
   /// @return One of the following error codes:
   ///  - PlasmaError_OK, if the object was created successfully.
   ///  - PlasmaError_ObjectExists, if an object with this ID is already
@@ -68,8 +70,8 @@ class PlasmaStore {
   int create_object(const ObjectID& object_id, int64_t data_size, int64_t metadata_size,
       Client* client, PlasmaObject* result);
 
-  /// Delete objects that have been created in the hash table. This should only
-  /// be called on objects that are returned by the eviction policy to evict.
+  /// Delete the specified objects that have been created in the hash table. This should
+  /// only be called on objects that are returned by the eviction policy to evict.
   ///
   /// @param object_ids Object IDs of the objects to be deleted.
   /// @return Void.
@@ -84,7 +86,7 @@ class PlasmaStore {
   /// store when it is done with the object.
   ///
   /// @param client The client making this request.
-  /// @param object_ids Object IDs of the objects to be gotten.
+  /// @param object_ids Object IDs of the objects to get.
   /// @param timeout_ms The timeout for the get request in milliseconds.
   /// @return Void.
   void process_get_request(
@@ -99,21 +101,22 @@ class PlasmaStore {
   /// @return Void.
   void seal_object(const ObjectID& object_id, unsigned char digest[]);
 
-  /// Check if the plasma store contains an object:
+  /// Check if the plasma store contains an object corresponding to the given 
+  /// Object ID.
   ///
   /// @param object_id Object ID that will be checked.
   /// @return OBJECT_FOUND if the object is in the store, OBJECT_NOT_FOUND if
-  /// not
+  /// not in the store.
   int contains_object(const ObjectID& object_id);
 
-  /// Record the fact that a particular client is no longer using an object.
+  /// Tell Plasma that a particular client is no longer using an object.
   ///
   /// @param object_id The object ID of the object that is being released.
   /// @param client The client making this request.
-  /// @param Void.
+  /// @return Void.
   void release_object(const ObjectID& object_id, Client* client);
 
-  /// Subscribe a file descriptor to updates about new sealed objects.
+  /// Subscribe a file descriptor to receive updates about new sealed objects.
   ///
   /// @param client The client making this request.
   /// @return Void.
@@ -131,6 +134,13 @@ class PlasmaStore {
   /// @return Void.
   void disconnect_client(Client* client);
 
+  /// Send notifications about sealed objects to the specified subscriber. This is called
+  /// in seal_object. If the socket's send buffer is full, the notification will
+  /// be
+  /// buffered, and this will be called again when the send buffer has room.
+  ///
+  /// @param client The client to send the notification to.
+  /// @return Void.
   void send_notifications(int client_fd);
 
   Status process_message(Client* client);
